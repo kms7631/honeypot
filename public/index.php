@@ -116,9 +116,7 @@
     <nav class="nav">
         <div class="nav-logo">HONEYPOT DEMO</div>
         <div class="nav-menu">
-            <a href="#features">기능</a>
             <a href="admin.php">로그인</a>
-            <a href="admin.php">관리자</a>
         </div>
     </nav>
     <section class="hero">
