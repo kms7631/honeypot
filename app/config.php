@@ -3,7 +3,7 @@
 define('DB_HOST', 'localhost');
 define('DB_NAME', 'honeypot_demo');
 define('DB_USER', 'root');
-define('DB_PASS', '비밀번호를_여기에');
+define('DB_PASS', '0000');
 
 define('HONEYPOT_BAN_THRESHOLD', 3); // N회 이상 시 차단
 
