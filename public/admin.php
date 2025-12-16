@@ -1,4 +1,5 @@
 <?php
+session_start();
 require_once '../app/check_ban.php';
 require_once '../app/db.php';
 require_once '../app/helpers.php';
@@ -9,6 +10,12 @@ $success = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = trim($_POST['id'] ?? '');
     $pw = trim($_POST['pw'] ?? '');
+    // 관리자 계정이면 대시보드로 이동
+    if ($id === ADMIN_ID && $pw === ADMIN_PW) {
+        $_SESSION['is_admin'] = true;
+        header('Location: dashboard.php');
+        exit;
+    }
     $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     if ($id !== '' && $pw !== '' && $ip) {
         $pdo = get_pdo();
