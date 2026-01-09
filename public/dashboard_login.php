@@ -9,7 +9,6 @@ if (isset($_GET['logout'])) {
     header('Location: dashboard_login.php');
     exit;
 }
-
 $err = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $id = trim($_POST['id'] ?? '');
