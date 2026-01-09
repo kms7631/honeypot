@@ -1,0 +1,14 @@
+# Secrets / local config
+/app/config.php
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs
+*.log
+
+# Dependencies (if added later)
+/vendor/
+/node_modules/
