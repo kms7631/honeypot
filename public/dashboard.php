@@ -1,4 +1,13 @@
 <?php
+$secure_cookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+ini_set('session.use_strict_mode', '1');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $secure_cookie,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
 require_once '../app/check_ban.php';
 require_once '../app/db.php';
@@ -7,10 +16,25 @@ if (empty($_SESSION['is_admin'])) {
     header('Location: dashboard_login.php');
     exit;
 }
+
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 $pdo = get_pdo();
 $admin_ip = $_SERVER['REMOTE_ADDR'] ?? '';
 // POST 액션 처리
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $posted_token = $_POST['csrf_token'] ?? '';
+    if (!is_string($posted_token) || !hash_equals($csrf_token, $posted_token)) {
+        http_response_code(400);
+        exit('잘못된 요청');
+    }
+    if (!$pdo) {
+        http_response_code(503);
+        exit('현재 DB 연결이 불가합니다. 잠시 후 다시 시도하세요.');
+    }
             // 개별 로그 삭제
             if (isset($_POST['delete_log_id'])) {
                 $log_id = (int)$_POST['delete_log_id'];
@@ -54,34 +78,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$ip]);
         header('Location: dashboard.php'); exit;
     }
-    if (isset($_POST['show_pw'])) {
-        $show_pw_id = (int)$_POST['show_pw'];
-        if (isset($_SESSION['show_pw_id']) && $_SESSION['show_pw_id'] == $show_pw_id) {
-            unset($_SESSION['show_pw_id']); // 이미 열려있으면 닫기
-        } else {
-            $_SESSION['show_pw_id'] = $show_pw_id; // 아니면 열기
-        }
-        header('Location: dashboard.php'); exit;
-    }
 }
-// 공격 로그 50개
-// IP별 시도 횟수 집계 (최근 1일 기준)
+// DB가 죽어도 대시보드가 하얀 화면이 되지 않도록 보호
+$db_unavailable = false;
 $ip_attempts = [];
-$stmt = $pdo->query("SELECT ip_address, COUNT(*) as cnt FROM attack_log WHERE access_time > DATE_SUB(NOW(), INTERVAL 1 DAY) GROUP BY ip_address");
-foreach ($stmt as $row) {
-    $ip_attempts[$row['ip_address']] = $row['cnt'];
-}
-// 최근 1일 내 전체 로그를 IP별로 그룹화
-$raw_logs = $pdo->query('SELECT * FROM attack_log WHERE access_time > DATE_SUB(NOW(), INTERVAL 1 DAY) ORDER BY access_time DESC')->fetchAll();
 $logs_by_ip = [];
-foreach ($raw_logs as $row) {
-    $ip = $row['ip_address'];
-    if (!isset($logs_by_ip[$ip])) $logs_by_ip[$ip] = [];
-    $logs_by_ip[$ip][] = $row;
+$bans = [];
+if ($pdo) {
+    // IP별 시도 횟수 집계 (최근 1일 기준)
+    $stmt = $pdo->query("SELECT ip_address, COUNT(*) as cnt FROM attack_log WHERE access_time > DATE_SUB(NOW(), INTERVAL 1 DAY) GROUP BY ip_address");
+    foreach ($stmt as $row) {
+        $ip_attempts[$row['ip_address']] = $row['cnt'];
+    }
+    // 최근 1일 내 전체 로그를 IP별로 그룹화
+    $raw_logs = $pdo->query('SELECT * FROM attack_log WHERE access_time > DATE_SUB(NOW(), INTERVAL 1 DAY) ORDER BY access_time DESC')->fetchAll();
+    foreach ($raw_logs as $row) {
+        $ip = $row['ip_address'];
+        if (!isset($logs_by_ip[$ip])) $logs_by_ip[$ip] = [];
+        $logs_by_ip[$ip][] = $row;
+    }
+    // 차단 IP 목록
+    $bans = $pdo->query('SELECT * FROM ip_bans ORDER BY ban_time DESC')->fetchAll();
+} else {
+    $db_unavailable = true;
+    error_log('[HONEYPOT_DASHBOARD] DB unavailable; showing maintenance message');
 }
-// 차단 IP 목록
-$bans = $pdo->query('SELECT * FROM ip_bans ORDER BY ban_time DESC')->fetchAll();
-$show_pw_id = $_SESSION['show_pw_id'] ?? null;
 $delete_mode = !empty($_SESSION['delete_mode']);
 $open_ip = $_GET['open_ip'] ?? null;
 $open_ban_ip = $_GET['open_ban_ip'] ?? null;
@@ -205,12 +226,6 @@ function random_accounts_for_demo(string $ip, int $min = 2, int $max = 5): array
         color: #aaa;
         font-weight: bold;
     }
-    .pw-raw {
-        font-family: 'Consolas', 'Menlo', monospace;
-        background: #f7f7f7;
-        border-radius: 3px;
-        padding: 2px 6px;
-    }
     .footer {
         margin-top: 32px;
         text-align: right;
@@ -225,8 +240,15 @@ function random_accounts_for_demo(string $ip, int $min = 2, int $max = 5): array
         <div class="header-title">허니팟 관리자 대시보드</div>
         <a href="logout.php" class="logout">로그아웃</a>
     </div>
+
+    <?php if ($db_unavailable): ?>
+        <div style="background:#fff; border:1px solid #e0e7ef; border-radius:10px; padding:14px 16px; margin:14px 0; color:#333;">
+            현재 DB 연결이 불가합니다. 잠시 후 다시 시도하세요.
+        </div>
+    <?php endif; ?>
     <h3 style="margin-bottom:10px; color:#2d3a4b; font-weight:600;">최근 로그인 시도</h3>
     <form method="post" style="display:inline; float:right; margin-bottom:8px;">
+        <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
         <button type="submit" name="toggle_delete_mode" value="1" style="background:#e74c3c; color:#fff; font-size:0.98em; padding:6px 18px; border-radius:6px; border:none; margin-left:8px; cursor:pointer;">기록 삭제</button>
     </form>
     <table>
@@ -255,41 +277,51 @@ function random_accounts_for_demo(string $ip, int $min = 2, int $max = 5): array
         <tr>
             <td colspan="2" style="background:#f8fafd; padding:0; border-top:1px solid #e0e7ef;">
                 <table style="width:100%;margin:0;">
-                    <tr style="background:#f0f3fa;"><th>시간</th><th>ID</th><th>PW</th><th>상태</th><th>액션</th><?php if($delete_mode): ?><th>삭제</th><?php endif; ?></tr>
+                    <tr style="background:#f0f3fa;"><th>시간</th><th>ID</th><th>PW</th><th>요청</th><th>상태</th><th>액션</th><?php if($delete_mode): ?><th>삭제</th><?php endif; ?></tr>
                     <?php foreach ($rows as $row): ?>
                     <tr>
                         <td><?=h($row['access_time'])?></td>
                         <td><?=h($row['attempt_id'])?></td>
                         <td>
                             <?php
-                            $has_raw = isset($row['attempt_pw_raw']) && $row['attempt_pw_raw'] !== '';
-                            if ($show_pw_id == $row['log_id'] && $has_raw) {
-                                echo '<span class="pw-raw">'.h($row['attempt_pw_raw']).'</span>';
-                            } else {
-                                echo h($row['attempt_pw_masked']);
+                            echo h($row['attempt_pw_masked']);
+                            ?>
+                        </td>
+                        <td style="text-align:left;">
+                            <?php
+                            $req_method = $row['method'] ?? '';
+                            $req_path = $row['request_path'] ?? '';
+                            $ua = $row['user_agent'] ?? '';
+                            $req_line = trim(($req_method ?: '-') . ' ' . ($req_path ?: '-'));
+                            $ua_short = '-';
+                            if ($ua !== '') {
+                                $ua_short = mb_substr($ua, 0, 40, 'UTF-8');
+                                if (mb_strlen($ua, 'UTF-8') > 40) {
+                                    $ua_short .= '…';
+                                }
                             }
+                            echo '<div style="font-size:0.92em;">' . h($req_line) . '</div>';
+                            echo '<div style="font-size:0.82em;color:#888;" title="' . h($ua) . '">UA: ' . h($ua_short) . '</div>';
                             ?>
                         </td>
                         <td class="<?= $row['is_banned'] ? 'banned' : '' ?>"><?php echo $row['is_banned'] ? '차단됨' : '-'; ?></td>
                         <td>
                             <?php if ($danger): ?>
-                            <?php if (!$admin_ip || $row['ip_address'] !== $admin_ip): ?>
-                            <form method="post" style="display:inline">
-                                <input type="hidden" name="ban_ip" value="<?=h($row['ip_address'])?>">
-                                <button type="submit">차단</button>
-                            </form>
+                            <?php if ($admin_ip && $row['ip_address'] === $admin_ip): ?>
+                                <button type="button" disabled title="현재 접속 IP는 차단할 수 없습니다." style="background:#b0b8c4; cursor:not-allowed;">차단</button>
+                            <?php else: ?>
+                                <form method="post" style="display:inline">
+                                    <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
+                                    <input type="hidden" name="ban_ip" value="<?=h($row['ip_address'])?>">
+                                    <button type="submit">차단</button>
+                                </form>
                             <?php endif; ?>
-                            <?php endif; ?>
-                            <?php if ($has_raw): ?>
-                            <form method="post" style="display:inline">
-                                <input type="hidden" name="show_pw" value="<?=h($row['log_id'])?>">
-                                <button type="submit"><?=(($show_pw_id ?? null) == $row['log_id']) ? '가리기' : '원문 보기'?></button>
-                            </form>
                             <?php endif; ?>
                         </td>
                         <?php if($delete_mode): ?>
                         <td>
                             <form method="post" style="display:inline">
+                                <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
                                 <input type="hidden" name="delete_log_id" value="<?=h($row['log_id'])?>">
                                 <button type="submit" style="background:#e74c3c; color:#fff; border-radius:4px; padding:4px 10px;">삭제</button>
                             </form>
@@ -305,6 +337,7 @@ function random_accounts_for_demo(string $ip, int $min = 2, int $max = 5): array
     </table>
     <h2>차단 IP 목록</h2>
         <form method="post" style="margin-bottom:10px;">
+            <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
             <button type="submit" name="add_test_bans" value="1">차단 IP 시험 데이터 추가</button>
         </form>
     <table>
@@ -330,6 +363,7 @@ function random_accounts_for_demo(string $ip, int $min = 2, int $max = 5): array
             <td><?=h($row['ban_reason'] ?? '')?></td>
             <td>
                 <form method="post" style="display:inline">
+                    <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
                     <input type="hidden" name="unban_ip" value="<?=h($row['ip_address'])?>">
                     <button type="submit">차단 해제</button>
                 </form>

@@ -11,7 +11,8 @@ function get_pdo() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             ]);
         } catch (PDOException $e) {
-            die('DB 연결 실패: 데모 환경에서만 표시 - ' . htmlspecialchars($e->getMessage()));
+            error_log('[DB_ERROR] ' . $e->getMessage());
+            return null;
         }
     }
     return $pdo;

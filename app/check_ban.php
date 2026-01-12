@@ -3,6 +3,15 @@
 require_once __DIR__ . '/db.php';
 
 if (session_status() === PHP_SESSION_NONE) {
+    $secure_cookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    ini_set('session.use_strict_mode', '1');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'secure' => $secure_cookie,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
     session_start();
 }
 
@@ -19,6 +28,10 @@ if ($script === 'dashboard.php' && !empty($_SESSION['is_admin'])) {
 $ip = $_SERVER['REMOTE_ADDR'] ?? '';
 if ($ip) {
     $pdo = get_pdo();
+    if (!$pdo) {
+        error_log('[HONEYPOT_BAN_CHECK] DB unavailable; skipping ban check');
+        return;
+    }
     $stmt = $pdo->prepare('SELECT 1 FROM ip_bans WHERE ip_address = ? LIMIT 1');
     $stmt->execute([$ip]);
     if ($stmt->fetch()) {

@@ -1,4 +1,13 @@
 <?php
+$secure_cookie = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+ini_set('session.use_strict_mode', '1');
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $secure_cookie,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
 session_start();
 require_once '../app/check_ban.php';
 require_once '../app/config.php';
@@ -10,7 +19,17 @@ if (isset($_GET['logout'])) {
     exit;
 }
 $err = '';
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $posted_token = $_POST['csrf_token'] ?? '';
+    if (!is_string($posted_token) || !hash_equals($csrf_token, $posted_token)) {
+        http_response_code(400);
+        $err = '잘못된 요청';
+    } else {
     $id = trim($_POST['id'] ?? '');
     $pw = trim($_POST['pw'] ?? '');
     if ($id === ADMIN_ID && $pw === ADMIN_PW) {
@@ -19,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     } else {
         $err = '관리자 인증 실패';
+    }
     }
 }
 ?><!DOCTYPE html>
@@ -40,8 +60,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     .login-box h1 {
         font-size: 1.5em;
-        margin-bottom: 1.2em;
+        margin: 0 0 1.2em 0;
         color: #333;
+        background: transparent;
+        padding: 0;
+        border-radius: 0;
     }
     .login-box input[type=text],
     .login-box input[type=password] {
@@ -85,6 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="login-box">
         <h1>관리자 대시보드 로그인</h1>
         <form method="post" autocomplete="off">
+            <input type="hidden" name="csrf_token" value="<?=h($csrf_token)?>">
             <input type="text" name="id" placeholder="아이디" required autofocus>
             <input type="password" name="pw" placeholder="비밀번호" required>
             <?php if ($err) echo '<div class="error">'.h($err).'</div>'; ?>

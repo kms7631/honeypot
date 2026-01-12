@@ -116,14 +116,14 @@
     <nav class="nav">
         <div class="nav-logo">HONEYPOT DEMO</div>
         <div class="nav-menu">
-            <a href="admin.php">로그인</a>
+            <a href="admin.php">포털 로그인</a>
         </div>
     </nav>
     <section class="hero">
         <div class="hero-title">보안 허니팟 데모<br>공격 탐지 & 관리자 대시보드</div>
         <div class="hero-desc">실제 공격 시나리오를 체험하고, 관리자 대시보드에서<br>로그와 차단을 직접 관리해보세요.</div>
-        <a href="admin.php" class="cta-btn">허니팟 로그인 체험하기</a>
-        <div style="margin-top:1.5em;color:#888;font-size:1em;">관리자 계정으로 로그인 시<br>대시보드로 이동합니다.</div>
+        <a href="admin.php" class="cta-btn">관리자 포털로 이동</a>
+        <div style="margin-top:1.5em;color:#888;font-size:1em;">체험용 로그인 페이지입니다.<br>입력한 시도는 기록될 수 있습니다.</div>
     </section>
     <section class="features" id="features">
         <div class="feature-card">

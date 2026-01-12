@@ -6,7 +6,9 @@ function h($str) {
 
 // 비밀번호 마스킹(앞 3글자 + ***)
 function mask_pw($pw) {
+    $visible = defined('HONEYPOT_PW_VISIBLE_CHARS') ? (int)HONEYPOT_PW_VISIBLE_CHARS : 3;
+    if ($visible < 0) $visible = 0;
     $len = mb_strlen($pw, 'UTF-8');
-    if ($len <= 3) return str_repeat('*', $len);
-    return mb_substr($pw, 0, 3, 'UTF-8') . str_repeat('*', $len - 3);
+    if ($len <= $visible) return str_repeat('*', $len);
+    return mb_substr($pw, 0, $visible, 'UTF-8') . str_repeat('*', $len - $visible);
 }
